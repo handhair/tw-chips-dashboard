@@ -1,0 +1,6 @@
+# 每天原始資料的快取（重跑時不用重抓，沒有也能從頭抓）
+chips_cache/
+__pycache__/
+
+# Claude 的本機預覽設定
+.claude/

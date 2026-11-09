@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>台股籌碼前兆儀表板</title>
+<meta name="description" content="用證交所與期交所每日盤後資料，追蹤外資期貨空單、融資、散戶多空比等台股崩跌前兆。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@500;700&display=swap">
+<style>
+  /* Layout: 標題列＋關鍵數字 → 六張訊號卡 → 每週燈號熱圖 → 高點前後對照 → 每日走勢 → 比較表。台股慣例：紅色買超、綠色賣超 */
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --fg: #18202b; --muted: #5b6676; --line: #dde2e9; --grid: #eceff3;
+    --s0: #2c5aa0; --s1: #c27a0e; --up: #cf3a3a; --down: #1d8a58;
+    --lv-ok: #b9d4c4; --lv-watch: #e7b43c; --lv-alert: #a8202d;
+    --band: rgba(44, 90, 160, .09); --band-edge: rgba(44, 90, 160, .45);
+    --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    --font-display: "Noto Serif TC", "Songti TC", "PMingLiU", serif;
+    --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f141b; --panel: #161d26; --fg: #e5eaf1; --muted: #97a2b2; --line: #28323f; --grid: #1f2833;
+      --s0: #7ea6ea; --s1: #e3a64c; --up: #f06868; --down: #3fbf87;
+      --lv-ok: #31503f; --lv-watch: #c99a2c; --lv-alert: #e2525e;
+      --band: rgba(126, 166, 234, .10); --band-edge: rgba(126, 166, 234, .5);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f141b; --panel: #161d26; --fg: #e5eaf1; --muted: #97a2b2; --line: #28323f; --grid: #1f2833;
+    --s0: #7ea6ea; --s1: #e3a64c; --up: #f06868; --down: #3fbf87;
+    --lv-ok: #31503f; --lv-watch: #c99a2c; --lv-alert: #e2525e;
+    --band: rgba(126, 166, 234, .10); --band-edge: rgba(126, 166, 234, .5);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 var(--font-body); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-block: 32px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 40px; }
+  h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.6rem, 4vw, 2.2rem); margin: 0; line-height: 1.25; text-wrap: balance; }
+  h2 { font-size: 1.1rem; font-weight: 700; margin: 0; }
+  .head { display: flex; flex-direction: column; gap: 8px; }
+  .eyebrow { margin: 0; color: var(--muted); font-size: 12px; letter-spacing: .06em; }
+  .kpis { display: flex; flex-wrap: wrap; gap: 4px 24px; margin: 4px 0 0; color: var(--muted); }
+  .kpis b { color: var(--fg); font-variant-numeric: tabular-nums; font-weight: 500; }
+  .sec { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .note { margin: 0; color: var(--muted); font-size: 12px; }
+  .status { color: var(--muted); font-size: 13px; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 720px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 400px) { .cards { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .card-label { font-size: 12px; color: var(--muted); }
+  .pill { font-size: 12px; padding: 0 8px; border-radius: 999px; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); }
+  .pill[data-level="警戒"] { background: var(--lv-alert); border-color: var(--lv-alert); color: #fff; }
+  .pill[data-level="留意"] { background: var(--lv-watch); border-color: var(--lv-watch); color: #1a1406; }
+  .pill[data-level="正常"] { background: var(--lv-ok); border-color: var(--lv-ok); color: var(--fg); }
+  .big { font-family: var(--font-display); font-weight: 500; font-size: 1.7rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
+  .unit { font-size: 12px; color: var(--muted); margin-left: 4px; }
+  .sub { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); align-items: center; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -2px; margin-right: 4px; }
+  .sw.ok { background: var(--lv-ok); } .sw.watch { background: var(--lv-watch); } .sw.alert { background: var(--lv-alert); }
+  .sw.band { background: var(--band); border: 1px solid var(--band-edge); }
+  .sw.line { height: 3px; width: 16px; vertical-align: 3px; }
+  .sw.s0 { background: var(--s0); } .sw.s1 { background: var(--s1); }
+  .sw.up { background: var(--up); } .sw.down { background: var(--down); }
+
+  .chart { position: relative; min-height: 96px; min-width: 0; }
+  .chart.tall { min-height: 190px; } .chart.heat { min-height: 210px; } .chart.mid { min-height: 150px; }
+  .chart svg { display: block; overflow: visible; }
+  .chart .tick text, .chart .lbl { fill: var(--muted); font-size: 11px; font-family: var(--font-body); }
+  .chart .domain { stroke: var(--line); }
+  .chart .tick line { stroke: var(--grid); }
+  .tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 4px 16px rgba(0,0,0,.12); border-radius: 6px; padding: 6px 10px; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; z-index: 2; }
+  .tip small { color: var(--muted); display: block; }
+
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+  @media (max-width: 640px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+  .panels { display: flex; flex-direction: column; gap: 10px; }
+  figure { margin: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  figcaption { display: flex; gap: 8px; align-items: baseline; font-size: 12px; }
+  figcaption b { font-weight: 500; }
+  figcaption span { color: var(--muted); }
+
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 440px; }
+  th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { font-size: 12px; color: var(--muted); font-weight: 500; }
+
+  details { border-top: 1px solid var(--line); padding-top: 14px; }
+  summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+  summary:focus-visible, a:focus-visible { outline: 2px solid var(--s0); outline-offset: 2px; }
+  .defs { margin: 10px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); max-width: 80ch; }
+  .defs b { color: var(--fg); font-weight: 500; }
+  a { color: var(--s0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="head">
+    <p class="eyebrow">證交所・期交所 每日盤後資料｜不是投資建議</p>
+    <h1>台股籌碼前兆儀表板</h1>
+    <p class="kpis">
+      <span>資料日 <b data-k="date">—</b></span>
+      <span>加權指數 <b data-k="taiex">—</b></span>
+      <span>距高點 <b data-k="drawdown">—</b></span>
+      <span>警戒訊號 <b data-k="warn_count">—</b> / 6</span>
+    </p>
+    <p class="status" id="status" hidden></p>
+  </header>
+
+  <section class="sec" id="signals">
+    <h2>最新訊號</h2>
+    <div class="cards">
+      <article class="card"><div class="card-top"><span class="card-label">外資台指期淨未平倉</span><span class="pill" data-s="s_txf">—</span></div>
+        <div><span class="big" data-k="foreign_txf">—</span><span class="unit">口</span></div><div class="sub">20 日前 <span data-k="foreign_txf_prev">—</span></div></article>
+      <article class="card"><div class="card-top"><span class="card-label">外資現貨 20 日累計</span><span class="pill" data-s="s_spot">—</span></div>
+        <div><span class="big" data-k="foreign_spot_20">—</span><span class="unit">億</span></div><div class="sub">當日 <span data-k="foreign_spot">—</span> 億</div></article>
+      <article class="card"><div class="card-top"><span class="card-label">融資餘額</span><span class="pill" data-s="s_margin">—</span></div>
+        <div><span class="big" data-k="margin">—</span><span class="unit">億</span></div><div class="sub">期間最高 <span data-k="margin_max">—</span> 億</div></article>
+      <article class="card"><div class="card-top"><span class="card-label">融資增幅 − 指數漲幅</span><span class="pill" data-s="s_gap">—</span></div>
+        <div><span class="big" data-k="margin_gap_60">—</span><span class="unit">百分點</span></div><div class="sub">60 日：融資 <span data-k="margin_chg_60">—</span>／指數 <span data-k="taiex_chg_60">—</span></div></article>
+      <article class="card"><div class="card-top"><span class="card-label">小台散戶多空比（5 日均）</span><span class="pill" data-s="s_retail">—</span></div>
+        <div><span class="big" data-k="retail_ratio_5">—</span><span class="unit">%</span></div><div class="sub">20 日前 <span data-k="retail_ratio_prev">—</span>%</div></article>
+      <article class="card"><div class="card-top"><span class="card-label">量能倍數</span><span class="pill" data-s="s_vol">—</span></div>
+        <div><span class="big" data-k="turnover_ratio">—</span><span class="unit">倍</span></div><div class="sub">成交 <span data-k="turnover">—</span> 億</div></article>
+    </div>
+  </section>
+
+  <section class="sec" id="heatmap">
+    <h2>每週燈號</h2>
+    <div class="legend"><span><span class="sw ok"></span>正常</span><span><span class="sw watch"></span>留意</span><span><span class="sw alert"></span>警戒</span><span><span class="sw band"></span>高點到低點</span></div>
+    <div class="chart heat" id="c-heat"></div>
+  </section>
+
+  <section class="sec" id="aligned">
+    <h2>高點前後對照</h2>
+    <div class="legend"><span><span class="sw line s0"></span>7 月下跌</span><span><span class="sw line s1"></span>10–11 月下跌</span><span>橫軸：距指數高點的交易日數</span></div>
+    <div class="grid2">
+      <figure><figcaption><b>指數</b><span>相對高點 %</span></figcaption><div class="chart mid" id="a-taiex"></div></figure>
+      <figure><figcaption><b>外資台指期淨未平倉</b><span>口</span></figcaption><div class="chart mid" id="a-txf"></div></figure>
+      <figure><figcaption><b>融資餘額</b><span>相對高點當天 %</span></figcaption><div class="chart mid" id="a-margin"></div></figure>
+      <figure><figcaption><b>外資現貨 20 日累計</b><span>億</span></figcaption><div class="chart mid" id="a-spot"></div></figure>
+    </div>
+  </section>
+
+  <section class="sec" id="timeline">
+    <h2>每日走勢</h2>
+    <div class="legend"><span><span class="sw band"></span>高點到低點</span><span><span class="sw up"></span>買超</span><span><span class="sw down"></span>賣超</span><span>虛線：警戒門檻</span></div>
+    <div class="panels">
+      <figure><figcaption><b>加權指數</b><span>點</span></figcaption><div class="chart tall" id="c-taiex"></div></figure>
+      <figure><figcaption><b>外資現貨買賣超</b><span>億</span></figcaption><div class="chart" id="c-spot"></div></figure>
+      <figure><figcaption><b>外資台指期淨未平倉</b><span>口</span></figcaption><div class="chart" id="c-txf"></div></figure>
+      <figure><figcaption><b>融資餘額</b><span>億</span></figcaption><div class="chart" id="c-margin"></div></figure>
+      <figure><figcaption><b>小台散戶多空比</b><span>5 日平均，%</span></figcaption><div class="chart" id="c-retail"></div></figure>
+      <figure><figcaption><b>成交金額</b><span>億</span></figcaption><div class="chart" id="c-vol"></div></figure>
+    </div>
+  </section>
+
+  <section class="sec" id="episodes">
+    <h2>兩次下跌比較</h2>
+    <div class="tablewrap">
+      <table><thead><tr><th>項目</th><th>7 月</th><th>10–11 月</th></tr></thead><tbody id="ep-body"></tbody></table>
+    </div>
+    <p class="note">「高點前」＝高點前 20 個交易日內。</p>
+  </section>
+
+  <details>
+    <summary>指標定義與警戒門檻</summary>
+    <ul class="defs">
+      <li><b>外資台指期淨未平倉</b>：大台多單減空單。警戒：淨空 ≥ 8 萬口；留意：≥ 6 萬口</li>
+      <li><b>外資現貨 20 日累計</b>：近 20 個交易日買賣超加總。警戒：賣超 ≥ 3,000 億；留意：≥ 1,500 億</li>
+      <li><b>融資餘額</b>：上市融資金額。警戒：距期間最高 3% 內；留意：8% 內</li>
+      <li><b>融資增幅 − 指數漲幅</b>：60 個交易日漲幅相減。警戒：≥ 5 個百分點；留意：≥ 2</li>
+      <li><b>小台散戶多空比</b>：小台未平倉扣掉三大法人淨部位後的散戶淨部位占比，取 5 日平均。警戒：≥ 25%；留意：≥ 15%</li>
+      <li><b>量能倍數</b>：成交金額 ÷ 前 20 日均量。警戒：≥ 1.3 倍且指數在高點 5% 內；留意：≥ 1.3 倍</li>
+      <li><b>門檻怎麼來的</b>：回頭看 2026 年 7 月與 10–11 月兩次下跌訂的，有後見之明，只代表風險累積程度。</li>
+      <li><b>資料來源</b>：臺灣證券交易所（指數、成交金額、三大法人、融資）、臺灣期貨交易所（台指期與小台法人未平倉、小台未平倉量）。每個交易日由 GitHub Actions 自動更新。</li>
+    </ul>
+  </details>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+(() => {
+  const LEVELS = ['外資期貨空單', '外資現貨賣超', '融資水位', '融資快過指數', '散戶偏多', '高檔爆量'];
+  const SIG = { s_txf: '外資期貨空單', s_spot: '外資現貨賣超', s_margin: '融資水位', s_gap: '融資快過指數', s_retail: '散戶偏多', s_vol: '高檔爆量' };
+  const SIG_VALUE = { s_txf: 'foreign_txf', s_spot: 'foreign_spot_20', s_margin: 'margin', s_gap: 'margin_gap_60', s_retail: 'retail_ratio_5', s_vol: 'turnover_ratio' };
+  const parse = d3.utcParse('%Y-%m-%d'), tipDate = d3.utcFormat('%Y/%m/%d');
+
+  // ---------- 計算 ----------
+  function buildSeries(chips) {
+    const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
+    const rows = chips.map((r) => ({ date: r.date, taiex: num(r.taiex), turnover: num(r.turnover), foreign_spot: num(r.foreign_spot), margin: num(r.margin), foreign_txf: num(r.foreign_txf), retail_ratio: num(r.retail_ratio) }))
+      .filter((r) => r.taiex != null).sort((a, b) => (a.date < b.date ? -1 : 1));
+    const pct = (a, b) => (a != null && b != null && b !== 0 ? (a / b - 1) * 100 : null);
+    const r1 = (v) => (v == null ? null : Math.round(v * 10) / 10);
+    const level = (v, bad, watch) => (v == null ? null : bad ? '警戒' : watch ? '留意' : '正常');
+    let peak = 0, marginMax = 0;
+    return rows.map((r, i) => {
+      peak = Math.max(peak, r.taiex || 0);
+      marginMax = Math.max(marginMax, r.margin || 0);
+      const last20 = rows.slice(Math.max(0, i - 19), i + 1), prior20 = rows.slice(Math.max(0, i - 20), i), back = rows[i - 60];
+      const avgVol = prior20.length === 20 ? prior20.reduce((s, x) => s + (x.turnover || 0), 0) / 20 : null;
+      const mChg = back ? pct(r.margin, back.margin) : null, tChg = back ? pct(r.taiex, back.taiex) : null;
+      const spot20 = last20.length === 20 && last20.every((x) => x.foreign_spot != null) ? Math.round(last20.reduce((s, x) => s + x.foreign_spot, 0)) : null;
+      const gap = mChg == null || tChg == null ? null : r1(mChg - tChg);
+      const vol = avgVol ? Math.round((r.turnover / avgVol) * 100) / 100 : null;
+      const last5 = rows.slice(Math.max(0, i - 4), i + 1).map((x) => x.retail_ratio).filter((v) => v != null);
+      const retail5 = last5.length === 5 ? r1(last5.reduce((s, v) => s + v, 0) / 5) : null;
+      return {
+        ...r, foreign_spot_20: spot20, retail_ratio_5: retail5, margin_chg_60: r1(mChg), taiex_chg_60: r1(tChg), margin_gap_60: gap, turnover_ratio: vol,
+        margin_max: marginMax, drawdown: r1((r.taiex / peak - 1) * 100),
+        s_txf: level(r.foreign_txf, r.foreign_txf <= -80000, r.foreign_txf <= -60000),
+        s_spot: level(spot20, spot20 <= -3000, spot20 <= -1500),
+        s_margin: level(r.margin, r.margin >= marginMax * 0.97, r.margin >= marginMax * 0.92),
+        s_gap: level(gap, gap >= 5, gap >= 2),
+        s_retail: level(retail5, retail5 >= 25, retail5 >= 15),
+        s_vol: level(vol, vol >= 1.3 && r.taiex >= peak * 0.95, vol >= 1.3),
+      };
+    });
+  }
+  function buildLatest(series) {
+    const i = series.length - 1, r = series[i], prev = series[Math.max(0, i - 20)];
+    const levels = Object.keys(SIG).map((k) => r[k]);
+    return { ...r, foreign_txf_prev: prev.foreign_txf, retail_ratio_prev: prev.retail_ratio_5, warn_count: levels.filter((v) => v === '警戒').length };
+  }
+  function buildWeekly(series) {
+    const weekKey = (d) => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7)); return t.toISOString().slice(0, 10); };
+    const last = new Map();
+    series.forEach((r) => last.set(weekKey(r.date), r));
+    const out = [];
+    for (const [week, r] of last) for (const k of Object.keys(SIG)) out.push({ week, date: r.date, signal: SIG[k], level: r[k], value: r[SIG_VALUE[k]] });
+    return out;
+  }
+  function buildWindows(series) {
+    const find = (name, from, to, troughTo) => {
+      const pre = series.filter((r) => r.date >= from && r.date <= to);
+      if (!pre.length) return null;
+      const peak = pre.reduce((a, b) => (b.taiex > a.taiex ? b : a));
+      const post = series.filter((r) => r.date >= peak.date && r.date <= troughTo);
+      const trough = post.reduce((a, b) => (b.taiex < a.taiex ? b : a));
+      return { name, peak: peak.date, peak_taiex: peak.taiex, trough: trough.date, trough_taiex: trough.taiex };
+    };
+    return [find('jul', '2026-06-01', '2026-07-17', '2026-08-15'), find('oct', '2026-08-01', '2026-10-31', '2099-12-31')].filter(Boolean);
+  }
+  function buildAligned(series, windows) {
+    const out = [];
+    windows.forEach((w) => {
+      const p = series.findIndex((r) => r.date === w.peak), base = series[p];
+      for (let k = -40; k <= 25; k++) {
+        const r = series[p + k];
+        if (!r) continue;
+        out.push({ episode: w.name, offset: k, date: r.date, taiex_pct: Math.round((r.taiex / base.taiex - 1) * 1000) / 10,
+          margin_pct: r.margin != null && base.margin ? Math.round((r.margin / base.margin - 1) * 1000) / 10 : null,
+          foreign_txf: r.foreign_txf, foreign_spot_20: r.foreign_spot_20 });
+      }
+    });
+    return out;
+  }
+  function buildEpisodes(series, windows) {
+    const by = Object.fromEntries(windows.map((w) => [w.name, w]));
+    const stat = (w) => {
+      if (!w) return {};
+      const i = series.findIndex((r) => r.date === w.peak), before = series.slice(Math.max(0, i - 20), i + 1);
+      const vals = (k) => before.map((r) => r[k]).filter((v) => v != null);
+      const min = (k) => (vals(k).length ? Math.min(...vals(k)) : null), max = (k) => (vals(k).length ? Math.max(...vals(k)) : null);
+      return { peak: w.peak, peak_taiex: w.peak_taiex, trough: w.trough, trough_taiex: w.trough_taiex, drop: Math.round((w.trough_taiex / w.peak_taiex - 1) * 1000) / 10,
+        txf_min: min('foreign_txf'), spot20: series[i].foreign_spot_20, margin_max: max('margin'), gap_max: max('margin_gap_60'), retail_max: max('retail_ratio_5'), vol_max: max('turnover_ratio') };
+    };
+    const a = stat(by.jul), b = stat(by.oct);
+    return [['高點日期', 'peak'], ['高點（點）', 'peak_taiex'], ['低點日期', 'trough'], ['低點（點）', 'trough_taiex'], ['跌幅（%）', 'drop'],
+      ['高點前最大外資淨空單（口）', 'txf_min'], ['高點當天外資 20 日累計（億）', 'spot20'], ['高點前融資最高（億）', 'margin_max'],
+      ['高點前融資快過指數最多（百分點）', 'gap_max'], ['高點前散戶多空比 5 日均最高（%）', 'retail_max'], ['高點前量能倍數最高', 'vol_max']]
+      .map(([metric, k]) => ({ metric, jul: a[k] ?? null, oct: b[k] ?? null }));
+  }
+
+  // ---------- 格式 ----------
+  const ok = (v) => v != null && isFinite(v);
+  const F = {
+    int: (v) => (ok(v) ? d3.format(',')(Math.round(v)) : '—'), signed: (v) => (ok(v) ? d3.format('+,')(Math.round(v)) : '—'),
+    signedOne: (v) => (ok(v) ? d3.format('+,.1f')(v) : '—'), pct: (v) => (ok(v) ? d3.format('+.1f')(v) + '%' : '—'),
+    two: (v) => (ok(v) ? d3.format('.2f')(v) : '—'), date: (s) => (s ? s.replaceAll('-', '/') : '—'), plain: (v) => (v == null ? '—' : String(v)),
+  };
+  const FIELD_FMT = { date: F.date, taiex: F.int, drawdown: F.pct, warn_count: F.plain, foreign_txf: F.signed, foreign_txf_prev: F.signed, foreign_spot_20: F.signed,
+    foreign_spot: F.signedOne, margin: F.int, margin_max: F.int, margin_gap_60: F.signedOne, margin_chg_60: F.pct, taiex_chg_60: F.pct,
+    retail_ratio_5: F.signedOne, retail_ratio_prev: F.signedOne, turnover_ratio: F.two, turnover: F.int };
+
+  // ---------- 繪圖工具 ----------
+  // 刻度：一般用千分位，口數這種大數字用「萬」
+  const tickFmt = (wan) => (v) => (wan && Math.abs(v) >= 10000 ? d3.format(',~f')(v / 10000) + '萬' : d3.format(',~f')(v));
+  function measure(svg, labels) {
+    const g = svg.append('g');
+    const w = d3.max(labels, (t) => g.append('text').attr('class', 'lbl').text(t).node().getComputedTextLength()) || 30;
+    g.remove();
+    return Math.ceil(w);
+  }
+  function makeSvg(el, width, height, label) {
+    return d3.select(el).append('svg').attr('width', '100%').attr('height', height).attr('viewBox', `0 0 ${width} ${height}`).attr('role', 'img').attr('aria-label', label);
+  }
+  function addTip(el, svg, width, height, m, pick) {
+    const tip = d3.select(el).append('div').attr('class', 'tip').attr('hidden', true);
+    const rule = svg.append('line').attr('y1', m.top).attr('y2', height - m.bottom).style('stroke', 'var(--muted)').style('opacity', .6).attr('hidden', true);
+    const scale = () => (svg.node().getBoundingClientRect().width || width) / width;
+    svg.append('rect').attr('x', m.left).attr('y', 0).attr('width', Math.max(0, width - m.left - m.right)).attr('height', height)
+      .style('fill', 'transparent').style('touch-action', 'pan-y')
+      .on('pointermove pointerdown', (ev) => {
+        const [px] = d3.pointer(ev, svg.node());
+        const r = pick(px);
+        if (!r) return;
+        rule.attr('x1', r.x).attr('x2', r.x).attr('hidden', null);
+        tip.attr('hidden', null).html('');
+        tip.append('small').text(r.lines[0]);
+        r.lines.slice(1).forEach((t) => tip.append('div').text(t));
+        const tw = tip.node().offsetWidth;
+        let left = r.x * scale() + 10;
+        if (left + tw > el.clientWidth) left = r.x * scale() - tw - 10;
+        tip.style('left', Math.max(0, left) + 'px').style('top', '0px');
+      })
+      .on('pointerleave', () => { tip.attr('hidden', true); rule.attr('hidden', true); });
+  }
+  const levelFill = { '正常': 'var(--lv-ok)', '留意': 'var(--lv-watch)', '警戒': 'var(--lv-alert)' };
+
+  function drawHeat(el, weekly, windows) {
+    el.replaceChildren();
+    const signals = LEVELS, weeks = [...new Set(weekly.map((r) => r.week))];
+    const width = Math.max(280, el.clientWidth || 600);
+    const svg = makeSvg(el, width, 10, '六個籌碼訊號每週的燈號熱圖');
+    const m = { top: 14, right: 4, bottom: 20, left: measure(svg, signals) + 10 };
+    const rowH = 26, height = m.top + signals.length * rowH + m.bottom;
+    svg.attr('height', height).attr('viewBox', `0 0 ${width} ${height}`);
+    const x = d3.scaleBand().domain(weeks).range([m.left, width - m.right]).paddingInner(0.12);
+    const y = d3.scaleBand().domain(signals).range([m.top, m.top + signals.length * rowH]).paddingInner(0.15);
+    const inWin = (wk) => windows.some((v) => { const e = new Date(wk + 'T00:00:00Z'); e.setUTCDate(e.getUTCDate() + 6); return e.toISOString().slice(0, 10) >= v.peak && wk <= v.trough; });
+    svg.append('g').selectAll('rect').data(weeks.filter(inWin)).join('rect').attr('x', (wk) => x(wk)).attr('width', x.bandwidth()).attr('y', 2).attr('height', 6).style('fill', 'var(--band-edge)');
+    svg.append('g').selectAll('text').data(signals).join('text').attr('class', 'lbl').attr('x', m.left - 8).attr('y', (s) => y(s) + y.bandwidth() / 2).attr('dy', '0.35em').attr('text-anchor', 'end').text((s) => s);
+    svg.append('g').selectAll('rect').data(weekly.filter((r) => r.level)).join('rect')
+      .attr('x', (r) => x(r.week)).attr('y', (r) => y(r.signal)).attr('width', x.bandwidth()).attr('height', y.bandwidth()).attr('rx', 2).style('fill', (r) => levelFill[r.level]);
+    const step = Math.ceil(weeks.length / Math.max(2, Math.floor((width - m.left) / 56)));
+    svg.append('g').selectAll('text').data(weeks.filter((_, i) => i % step === 0)).join('text').attr('class', 'lbl')
+      .attr('x', (wk) => x(wk) + x.bandwidth() / 2).attr('y', height - 6).attr('text-anchor', 'middle').text((wk) => d3.utcFormat('%-m/%-d')(parse(wk)));
+    const fmtV = { '外資期貨空單': (v) => d3.format('+,')(v) + ' 口', '外資現貨賣超': (v) => d3.format('+,')(v) + ' 億', '融資水位': (v) => d3.format(',.0f')(v) + ' 億', '融資快過指數': (v) => d3.format('+.1f')(v) + ' 百分點', '散戶偏多': (v) => d3.format('+.1f')(v) + '%', '高檔爆量': (v) => d3.format('.2f')(v) + ' 倍' };
+    addTip(el, svg, width, height, m, (px) => {
+      const sx = px * (width / (svg.node().getBoundingClientRect().width || width));
+      const wk = weeks[Math.max(0, Math.min(weeks.length - 1, Math.floor((sx - m.left) / x.step())))];
+      const items = weekly.filter((r) => r.week === wk);
+      return items.length ? { x: x(wk) + x.bandwidth() / 2, lines: [tipDate(parse(items[0].date)), ...items.map((r) => `${r.signal}：${r.level || '—'}（${r.value == null ? '—' : fmtV[r.signal](r.value)}）`)] } : null;
+    });
+  }
+
+  function drawAligned(el, aligned, field, fmt, label) {
+    el.replaceChildren();
+    const rows = aligned.filter((r) => r[field] != null), eps = ['jul', 'oct'];
+    const name = { jul: '7 月', oct: '10–11 月' }, color = { jul: 'var(--s0)', oct: 'var(--s1)' };
+    const width = Math.max(240, el.clientWidth || 400), height = 150;
+    const svg = makeSvg(el, width, height, label + '，兩次下跌以高點對齊');
+    const y = d3.scaleLinear().domain(d3.extent(rows, (r) => r[field])).nice(4);
+    const ticks = y.ticks(4), tf = tickFmt(field === 'foreign_txf');
+    const m = { top: 6, right: 8, bottom: 20, left: measure(svg, ticks.map(tf)) + 10 };
+    const x = d3.scaleLinear().domain([-40, 25]).range([m.left, width - m.right]);
+    y.range([height - m.bottom, m.top]);
+    svg.append('g').attr('transform', `translate(${m.left},0)`).call(d3.axisLeft(y).tickValues(ticks).tickFormat(tf).tickSize(-(width - m.left - m.right))).call((g) => g.select('.domain').remove());
+    svg.append('g').attr('transform', `translate(0,${height - m.bottom})`).call(d3.axisBottom(x).tickValues([-40, -20, 0, 20]).tickFormat((v) => (v > 0 ? '+' + v : v)).tickSizeOuter(0));
+    svg.append('line').attr('x1', x(0)).attr('x2', x(0)).attr('y1', m.top).attr('y2', height - m.bottom).style('stroke', 'var(--muted)').style('stroke-dasharray', '3 3');
+    if (y.domain()[0] < 0 && y.domain()[1] > 0) svg.append('line').attr('x1', m.left).attr('x2', width - m.right).attr('y1', y(0)).attr('y2', y(0)).style('stroke', 'var(--line)');
+    eps.forEach((ep) => svg.append('path').datum(rows.filter((r) => r.episode === ep)).attr('d', d3.line().x((r) => x(r.offset)).y((r) => y(r[field]))).style('fill', 'none').style('stroke', color[ep]).style('stroke-width', 1.8));
+    addTip(el, svg, width, height, m, (px) => {
+      const k = Math.round(x.invert(px * (width / (svg.node().getBoundingClientRect().width || width))));
+      const lines = eps.map((ep) => { const r = rows.find((v) => v.episode === ep && v.offset === k); return r ? `${name[ep]}（${tipDate(parse(r.date))}）：${fmt(r[field])}` : null; }).filter(Boolean);
+      return lines.length ? { x: x(k), lines: [`距高點 ${k > 0 ? '+' + k : k} 個交易日`, ...lines] } : null;
+    });
+  }
+
+  function drawDaily(el, series, windows, spec, label) {
+    el.replaceChildren();
+    const rows = series.filter((r) => r[spec.field] != null);
+    const width = Math.max(260, el.clientWidth || 600), height = spec.tall ? 190 : 96;
+    const svg = makeSvg(el, width, height, label + ' 每日走勢');
+    const y = d3.scaleLinear().domain(d3.extent(rows, (r) => r[spec.field]));
+    if (spec.zero) y.domain([Math.min(0, y.domain()[0]), Math.max(0, y.domain()[1])]);
+    if (spec.limit != null) y.domain([Math.min(spec.limit, y.domain()[0]), Math.max(spec.limit, y.domain()[1])]);
+    const n = spec.tall ? 5 : 3;
+    y.nice(n);
+    const ticks = y.ticks(n), tf = tickFmt(spec.wan);
+    const m = { top: 6, right: 8, bottom: spec.axis ? 20 : 6, left: measure(svg, ticks.map(tf)) + 10 };
+    const x = d3.scaleUtc().domain(d3.extent(series, (r) => parse(r.date))).range([m.left, width - m.right]);
+    y.range([height - m.bottom, m.top]);
+    svg.append('g').selectAll('rect').data(windows).join('rect').attr('x', (v) => x(parse(v.peak))).attr('width', (v) => Math.max(1, x(parse(v.trough)) - x(parse(v.peak))))
+      .attr('y', m.top).attr('height', height - m.top - m.bottom).style('fill', 'var(--band)');
+    svg.append('g').attr('transform', `translate(${m.left},0)`).call(d3.axisLeft(y).tickValues(ticks).tickFormat(tf).tickSize(-(width - m.left - m.right))).call((g) => g.select('.domain').remove());
+    if (spec.axis) svg.append('g').attr('transform', `translate(0,${height - m.bottom})`).call(d3.axisBottom(x).ticks(Math.max(2, Math.floor((width - m.left) / 80))).tickFormat(d3.utcFormat('%-m/%-d')).tickSizeOuter(0));
+    if (spec.zero) svg.append('line').attr('x1', m.left).attr('x2', width - m.right).attr('y1', y(0)).attr('y2', y(0)).style('stroke', 'var(--line)');
+    if (spec.limit != null) svg.append('line').attr('x1', m.left).attr('x2', width - m.right).attr('y1', y(spec.limit)).attr('y2', y(spec.limit)).style('stroke', 'var(--lv-alert)').style('stroke-dasharray', '4 3');
+    if (spec.kind === 'bar') {
+      const base = spec.zero ? 0 : y.domain()[0], bw = Math.max(1, (width - m.left - m.right) / series.length - 1);
+      svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', (r) => x(parse(r.date)) - bw / 2).attr('width', bw)
+        .attr('y', (r) => y(Math.max(base, r[spec.field]))).attr('height', (r) => Math.abs(y(r[spec.field]) - y(base)))
+        .style('fill', (r) => (spec.signed ? (r[spec.field] >= 0 ? 'var(--up)' : 'var(--down)') : 'var(--s0)'));
+    } else {
+      if (spec.kind === 'area') svg.append('path').datum(rows).attr('d', d3.area().x((r) => x(parse(r.date))).y0(y(0)).y1((r) => y(r[spec.field]))).style('fill', 'var(--s0)').style('opacity', .16);
+      svg.append('path').datum(rows).attr('d', d3.line().x((r) => x(parse(r.date))).y((r) => y(r[spec.field]))).style('fill', 'none').style('stroke', 'var(--s0)').style('stroke-width', 1.6);
+      const last = rows[rows.length - 1];
+      if (last) svg.append('circle').attr('cx', x(parse(last.date))).attr('cy', y(last[spec.field])).attr('r', 3).style('fill', 'var(--s0)');
+    }
+    const bis = d3.bisector((r) => parse(r.date)).center;
+    addTip(el, svg, width, height, m, (px) => {
+      const r = rows[bis(rows, x.invert(px * (width / (svg.node().getBoundingClientRect().width || width))))];
+      return r ? { x: x(parse(r.date)), lines: [tipDate(parse(r.date)), spec.fmt(r[spec.field])] } : null;
+    });
+  }
+
+  // ---------- 組合 ----------
+  const DAILY = {
+    'c-taiex': { label: '加權指數', field: 'taiex', kind: 'line', fmt: (v) => d3.format(',')(Math.round(v)) + ' 點', tall: true, axis: true },
+    'c-spot': { label: '外資現貨買賣超', field: 'foreign_spot', kind: 'bar', fmt: (v) => d3.format('+,.0f')(v) + ' 億', zero: true, signed: true },
+    'c-txf': { label: '外資台指期淨未平倉', field: 'foreign_txf', kind: 'area', fmt: (v) => d3.format('+,')(v) + ' 口', zero: true, limit: -80000, wan: true },
+    'c-margin': { label: '融資餘額', field: 'margin', kind: 'line', fmt: (v) => d3.format(',.0f')(v) + ' 億' },
+    'c-retail': { label: '小台散戶多空比', field: 'retail_ratio_5', kind: 'line', fmt: (v) => d3.format('+.1f')(v) + '%', zero: true, limit: 25 },
+    'c-vol': { label: '成交金額', field: 'turnover', kind: 'bar', fmt: (v) => d3.format(',.0f')(v) + ' 億', axis: true, zero: true },
+  };
+  const ALIGNED = {
+    'a-taiex': ['taiex_pct', (v) => d3.format('+.1f')(v) + '%', '指數相對高點'],
+    'a-txf': ['foreign_txf', (v) => d3.format('+,')(v) + ' 口', '外資台指期淨未平倉'],
+    'a-margin': ['margin_pct', (v) => d3.format('+.1f')(v) + '%', '融資餘額相對高點當天'],
+    'a-spot': ['foreign_spot_20', (v) => d3.format('+,')(v) + ' 億', '外資現貨 20 日累計'],
+  };
+  let state = null;
+
+  function render() {
+    if (!state) return;
+    const { series, latest, weekly, windows, aligned, episodes } = state;
+    document.querySelectorAll('[data-k]').forEach((el) => { el.textContent = (FIELD_FMT[el.dataset.k] || F.plain)(latest[el.dataset.k]); });
+    document.querySelectorAll('[data-s]').forEach((el) => { const v = latest[el.dataset.s]; el.textContent = v || '—'; el.dataset.level = v || ''; });
+    drawHeat(document.getElementById('c-heat'), weekly, windows);
+    Object.entries(ALIGNED).forEach(([id, [field, fmt, label]]) => drawAligned(document.getElementById(id), aligned, field, fmt, label));
+    Object.entries(DAILY).forEach(([id, spec]) => drawDaily(document.getElementById(id), series, windows, spec, spec.label));
+    const fmt = (v) => (v == null ? '—' : typeof v === 'number' ? (Number.isInteger(v) ? d3.format(',')(v) : d3.format(',.1f')(v)) : String(v).replaceAll('-', '/'));
+    d3.select('#ep-body').selectAll('tr').data(episodes).join('tr').each(function (r) { d3.select(this).selectAll('td').data([r.metric, fmt(r.jul), fmt(r.oct)]).join('td').text((v) => v); });
+  }
+
+  fetch('data/chips_data.json', { cache: 'no-cache' })
+    .then((res) => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+    .then((chips) => {
+      const series = buildSeries(chips), windows = buildWindows(series);
+      state = { series, windows, latest: buildLatest(series), weekly: buildWeekly(series), aligned: buildAligned(series, windows), episodes: buildEpisodes(series, windows) };
+      render();
+      let w = window.innerWidth, t;
+      window.addEventListener('resize', () => { if (window.innerWidth === w) return; w = window.innerWidth; clearTimeout(t); t = setTimeout(render, 150); });
+    })
+    .catch((e) => { const s = document.getElementById('status'); s.hidden = false; s.textContent = '資料載入失敗：' + e.message + '。請稍後重新整理頁面。'; });
+})();
+</script>
+</body>
+</html>
