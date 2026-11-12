@@ -2569,6 +2569,10 @@
   "trust_spot": 398.9,
   "dealer_spot": -175.4,
   "margin": 5366.8,
+  "dealer_txf": 85,
+  "trust_txf": 98519,
+  "foreign_txf": -103473,
+  "retail_ratio": 15.38,
   "pcr_oi": 66.54
  },
  {
@@ -2579,6 +2583,10 @@
   "trust_spot": 185.9,
   "dealer_spot": 62.6,
   "margin": 5411.6,
+  "dealer_txf": 33,
+  "trust_txf": 101870,
+  "foreign_txf": -104271,
+  "retail_ratio": 9.05,
   "pcr_oi": 65.17
  },
  {
@@ -2589,6 +2597,10 @@
   "trust_spot": 125.7,
   "dealer_spot": -65.4,
   "margin": 5334.7,
+  "dealer_txf": -187,
+  "trust_txf": 98901,
+  "foreign_txf": -99573,
+  "retail_ratio": 12.73,
   "pcr_oi": 66.69
  }
 ]

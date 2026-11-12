@@ -131,16 +131,63 @@ def margin(day):
 def taifex_month(kind, m, start, end):
     """期交所一次抓一個月內需要的區間，避免查詢區間太長被拒絕"""
     first, last = max(m, start), min(month_end(m), end)
-    span = {"queryStartDate": f"{first:%Y/%m/%d}", "queryEndDate": f"{last:%Y/%m/%d}"}
-    fetch = {
-        "txf": lambda: taifex_csv(TAIFEX_INST_URL, {**span, "commodityId": "TXF"}),
-        "mxf": lambda: taifex_csv(TAIFEX_INST_URL, {**span, "commodityId": "MXF"}),
-        "mtx": lambda: taifex_csv(TAIFEX_DAILY_URL, {**span, "down_type": "1", "commodity_id": "MTX"}),
-        "pcr": lambda: taifex_csv(TAIFEX_PCR_URL, span),
-    }[kind]
+
+    def fetch(last):
+        span = {"queryStartDate": f"{first:%Y/%m/%d}", "queryEndDate": f"{last:%Y/%m/%d}"}
+        if kind == "txf":
+            return taifex_csv(TAIFEX_INST_URL, {**span, "commodityId": "TXF"})
+        if kind == "mxf":
+            return taifex_csv(TAIFEX_INST_URL, {**span, "commodityId": "MXF"})
+        if kind == "mtx":
+            return taifex_csv(TAIFEX_DAILY_URL, {**span, "down_type": "1", "commodity_id": "MTX"})
+        return taifex_csv(TAIFEX_PCR_URL, span)
+
     # 只有整個月份都在查詢範圍內、而且已經過完的月份才存快取
     whole = first == m and last == month_end(m) and last < date.today()
-    return cached(f"taifex_{kind}_{m:%Y%m}.json", fetch, lambda rows: whole and len(rows) > 0)
+    rows = cached(f"taifex_{kind}_{m:%Y%m}.json", lambda: fetch(last), lambda rows: whole and valid_rows(kind, rows))
+    # 結束日那天的資料還沒公布時，期交所會整段回錯誤頁，所以往前縮一天再查（最多縮 5 天，遇到週末也夠）
+    short = last
+    for _ in range(5):
+        if valid_rows(kind, rows) or short <= first:
+            break
+        short -= timedelta(days=1)
+        rows = fetch(short)
+    if not valid_rows(kind, rows) and kind in OPENAPI:
+        # 下載頁還是拿不到時，改用 OpenAPI（只有最近一個交易日）
+        print(f"期交所 {kind} 下載頁沒有資料，改用 OpenAPI", flush=True)
+        lo, hi = f"{first:%Y/%m/%d}", f"{last:%Y/%m/%d}"
+        rows = [r for r in openapi_rows(kind) if lo <= r[0] <= hi]
+    return rows
+
+
+def valid_rows(kind, rows):
+    width = {"txf": 14, "mxf": 14, "mtx": 18, "pcr": 7}[kind]
+    return any(len(r) >= width and r[0][:1].isdigit() for r in rows)
+
+
+OPENAPI = {
+    "txf": "MarketDataOfMajorInstitutionalTradersDetailsOfFuturesContractsBytheDate",
+    "mxf": "MarketDataOfMajorInstitutionalTradersDetailsOfFuturesContractsBytheDate",
+    "mtx": "DailyMarketReportFut",
+}
+
+
+def openapi_rows(kind):
+    """把期交所 OpenAPI 的 JSON 轉成跟下載頁 CSV 一樣的欄位位置"""
+    req = urllib.request.Request("https://openapi.taifex.com.tw/v1/" + OPENAPI[kind], headers={**HEADERS, "accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=60, context=SSL_CONTEXT) as resp:
+        data = json.load(resp)
+    day = lambda s: f"{s[:4]}/{s[4:6]}/{s[6:]}"
+    if kind in ("txf", "mxf"):
+        code = {"txf": "臺股期貨", "mxf": "小型臺指期貨"}[kind]
+        return [[day(x["Date"]), code, x["Item"]] + [""] * 10 + [x["OpenInterest(Net)"]] for x in data if x.get("ContractCode") == code]
+    rows = []
+    for x in data:
+        if x.get("Contract") == "MTX":
+            row = [""] * 18
+            row[0], row[1], row[2], row[11], row[17] = day(x["Date"]), "MTX", x["ContractMonth(Week)"], x["OpenInterest"], x["TradingSession"]
+            rows.append(row)
+    return rows
 
 
 def futures(start, end):
