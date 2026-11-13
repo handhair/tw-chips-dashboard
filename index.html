@@ -69,6 +69,9 @@
   .presets button[aria-pressed="true"] { background: var(--s0); color: var(--bg); }
   .presets button:focus-visible, .dates input:focus-visible { outline: 2px solid var(--s0); outline-offset: 1px; }
   .dates { display: inline-flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13px; color: var(--muted); }
+  .ctl-name { font-weight: 700; color: var(--fg); }
+  .ctl-sep { width: 1px; align-self: stretch; background: var(--line); }
+  @media (max-width: 640px) { .ctl-sep { display: none; } }
   .dates input { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); align-items: center; }
   .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -2px; margin-right: 4px; }
@@ -124,7 +127,14 @@
   </header>
 
   <div class="controls" id="controls">
-    <div class="presets" role="group" aria-label="期間">
+    <div class="dates ctl-group">
+      <span class="ctl-name">訊號卡</span>
+      <label>查詢日 <input type="date" id="day"></label>
+    </div>
+    <span class="ctl-sep" aria-hidden="true"></span>
+    <div class="dates ctl-group">
+      <span class="ctl-name">走勢圖期間</span>
+    <div class="presets" role="group" aria-label="走勢圖期間">
       <button type="button" data-months="1" aria-pressed="false">1 個月</button>
       <button type="button" data-months="3" aria-pressed="false">3 個月</button>
       <button type="button" data-months="6" aria-pressed="false">6 個月</button>
@@ -133,6 +143,7 @@
     <div class="dates">
       <label>從 <input type="date" id="from"></label>
       <label>到 <input type="date" id="to"></label>
+    </div>
     </div>
   </div>
 
@@ -201,7 +212,7 @@
       <li><b>融資增幅 − 指數漲幅</b>：60 個交易日漲幅相減。警戒：≥ 5 個百分點；留意：≥ 2</li>
       <li><b>小台散戶多空比</b>：小台未平倉扣掉三大法人淨部位後的散戶淨部位占比，取 5 日平均。警戒：≥ 25%；留意：≥ 15%</li>
       <li><b>量能倍數</b>：成交金額 ÷ 前 20 日均量。警戒：≥ 1.3 倍且指數在高點 5% 內；留意：≥ 1.3 倍</li>
-      <li><b>查詢期間</b>：訊號卡顯示「到」那天（遇到假日用前一個交易日）的數值；每週燈號和每日走勢只畫期間內的資料。20 日累計、60 日增幅這類指標都用完整資料算，不受期間影響。網址會記住期間，可以直接複製分享。</li>
+      <li><b>查詢日／走勢圖期間</b>：兩者分開設定。訊號卡和上方數字顯示「查詢日」那天的數值（遇到假日用前一個交易日）；每週燈號和每日走勢只畫「走勢圖期間」內的資料。20 日累計、60 日增幅這類指標都用完整資料算，不受期間影響。網址會記住兩者的設定，可以直接複製分享。</li>
       <li><b>門檻怎麼來的</b>：回頭看 2026 年 7 月與 10–11 月兩次下跌訂的，有後見之明，只代表風險累積程度。</li>
       <li><b>資料來源</b>：臺灣證券交易所（指數、成交金額、三大法人、融資）、臺灣期貨交易所（台指期與小台法人未平倉、小台未平倉量）。每個交易日由 GitHub Actions 自動更新。</li>
     </ul>
@@ -458,19 +469,34 @@
   let state = null;
 
   // ---------- 查詢期間 ----------
-  const fromEl = document.getElementById('from'), toEl = document.getElementById('to');
+  const fromEl = document.getElementById('from'), toEl = document.getElementById('to'), dayEl = document.getElementById('day');
   const iso = (d) => d.toISOString().slice(0, 10);
-  function setRange(from, to, months) {
-    const first = state.series[0].date, last = state.series[state.series.length - 1].date;
+  const bounds = () => [state.series[0].date, state.series[state.series.length - 1].date];
+  // 網址格式：#d=查詢日&r=從~到（預設值就省略）
+  function writeHash() {
+    const [first, last] = bounds(), parts = [];
+    if (state.day !== last) parts.push('d=' + state.day);
+    if (state.from !== first || state.to !== last) parts.push(`r=${state.from}~${state.to}`);
+    const hash = parts.length ? '#' + parts.join('&') : '';
+    if (location.hash !== hash) history.replaceState(null, '', hash || location.pathname);
+  }
+  function setDay(day, redraw = true) {
+    const [first, last] = bounds();
+    state.day = !day || day > last ? last : day < first ? first : day;
+    dayEl.value = state.day;
+    if (redraw) { writeHash(); render(); }
+  }
+  function setRange(from, to, months, redraw = true) {
+    const [first, last] = bounds();
     to = to && to >= first ? (to > last ? last : to) : last;
     from = from && from <= to ? (from < first ? first : from) : first;
     state.from = from; state.to = to;
     fromEl.value = from; toEl.value = to;
+    if (months == null && from === first && to === last) months = 0;
     document.querySelectorAll('.presets button').forEach((b) => b.setAttribute('aria-pressed', String(months != null && Number(b.dataset.months) === months)));
-    const hash = from === first && to === last ? '' : `#${from}~${to}`;
-    if (location.hash !== hash) history.replaceState(null, '', hash || location.pathname);
-    render();
+    if (redraw) { writeHash(); render(); }
   }
+  dayEl.addEventListener('change', () => setDay(dayEl.value));
   function preset(months) {
     const to = state.series[state.series.length - 1].date;
     if (!months) return setRange(null, to, 0);
@@ -486,9 +512,9 @@
   }));
 
   function render() {
-    if (!state || !state.to) return;
+    if (!state || !state.to || !state.day) return;
     const { aligned, episodes, windows } = state;
-    const end = d3.bisector((r) => r.date).right(state.series, state.to) - 1;
+    const end = Math.max(0, d3.bisector((r) => r.date).right(state.series, state.day) - 1);
     const series = state.series.filter((r) => r.date >= state.from && r.date <= state.to);
     const latest = buildLatest(state.series, end);
     const weekly = buildWeekly(series);
@@ -512,12 +538,15 @@
     .then((chips) => {
       const series = buildSeries(chips), windows = buildWindows(series);
       state = { series, windows, aligned: buildAligned(series, windows), episodes: buildEpisodes(series, windows) };
-      fromEl.min = toEl.min = series[0].date;
-      fromEl.max = toEl.max = series[series.length - 1].date;
-      // 網址可以帶期間，例如 #2026-06-01~2026-08-15，方便分享
+      fromEl.min = toEl.min = dayEl.min = series[0].date;
+      fromEl.max = toEl.max = dayEl.max = series[series.length - 1].date;
+      // 網址可以帶查詢日和期間，例如 #d=2026-07-10&r=2026-06-01~2026-08-15，方便分享
       const fromHash = () => {
-        const m = location.hash.match(/^#(\d{4}-\d{2}-\d{2})~(\d{4}-\d{2}-\d{2})$/);
-        if (m) setRange(m[1], m[2], null); else preset(0);
+        const h = location.hash, D = '(\\d{4}-\\d{2}-\\d{2})';
+        const d = h.match(new RegExp('d=' + D)), r = h.match(new RegExp(D + '~' + D));
+        setDay(d && d[1], false);
+        if (r) setRange(r[1], r[2], null, false); else setRange(null, null, 0, false);
+        writeHash(); render();
       };
       fromHash();
       window.addEventListener('hashchange', fromHash);
