@@ -2630,5 +2630,33 @@
   "foreign_txf": -96787,
   "retail_ratio": 14.77,
   "pcr_oi": 53.79
+ },
+ {
+  "date": "2026-11-17",
+  "taiex": 40092.11,
+  "turnover": 10129,
+  "foreign_spot": -380.9,
+  "trust_spot": -38.2,
+  "dealer_spot": -157.0,
+  "margin": 5087.2,
+  "dealer_txf": -436,
+  "trust_txf": 91226,
+  "foreign_txf": -97896,
+  "retail_ratio": 8.52,
+  "pcr_oi": 54.08
+ },
+ {
+  "date": "2026-11-18",
+  "taiex": 40194.91,
+  "turnover": 10752,
+  "foreign_spot": -765.6,
+  "trust_spot": 166.1,
+  "dealer_spot": -42.0,
+  "margin": 5080.3,
+  "dealer_txf": -1457,
+  "trust_txf": 93573,
+  "foreign_txf": -99438,
+  "retail_ratio": 16.37,
+  "pcr_oi": 39.8
  }
 ]
