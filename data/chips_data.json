@@ -2658,5 +2658,19 @@
   "foreign_txf": -99438,
   "retail_ratio": 16.37,
   "pcr_oi": 39.8
+ },
+ {
+  "date": "2026-11-19",
+  "taiex": 38426.89,
+  "turnover": 9430,
+  "foreign_spot": -243.1,
+  "trust_spot": 43.9,
+  "dealer_spot": -233.0,
+  "margin": 4843.7,
+  "dealer_txf": -1455,
+  "trust_txf": 91791,
+  "foreign_txf": -99219,
+  "retail_ratio": 6.29,
+  "pcr_oi": 41.0
  }
 ]
