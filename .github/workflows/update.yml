@@ -25,15 +25,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
+      # 證交所／期交所偶爾逾時：最多試 3 次，還是失敗就先用舊資料發布，下次執行會自動補抓
       - name: 補抓新的交易日
         if: github.event_name != 'push'
+        continue-on-error: true
         env:
           TZ: Asia/Taipei
-        run: python chips.py
+        run: |
+          for i in 1 2 3; do
+            python chips.py && exit 0
+            echo "第 $i 次失敗，2 分鐘後重試"; sleep 120
+          done
+          exit 1
       - name: 有新資料就 commit
         if: github.event_name != 'push'
         run: |
@@ -42,12 +49,12 @@ jobs:
           git add data/chips_data.json
           git diff --cached --quiet || git commit -m "更新籌碼資料 $(TZ=Asia/Taipei date +%F)"
           git push
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: .
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
     environment:
       name: github-pages
